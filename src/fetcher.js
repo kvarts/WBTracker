@@ -135,7 +135,7 @@ class WBSearch {
             response  = await fetch(url)
         } catch (err) {
             console.group("fetchData failed");
-            console.log("url: ", url);
+            console.log("url: ", url.toString());
             console.log("error: ", err.toString());
             console.groupEnd();
             return
@@ -148,8 +148,9 @@ class WBSearch {
             jsonData = JSON.parse(body)
         } catch (err) {
             console.group("fetchData failed parse json");
+            console.log("url: ", url.toString())
             console.log("response body: ", body)
-            console.log("err: ", err.toString())
+            console.log("error: ", err.toString())
             console.groupEnd()
             return
         }
