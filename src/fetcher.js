@@ -136,18 +136,20 @@ class WBSearch {
         } catch (err) {
             console.group("fetchData failed");
             console.log("url: ", url);
-            console.log("error: ", err);
+            console.log("error: ", err.toString());
             console.groupEnd();
             return
         }
 
+        let body
         let jsonData
         try {
-            jsonData = await response.json()
+            body = await response.text()
+            jsonData = JSON.parse(body)
         } catch (err) {
             console.group("fetchData failed parse json");
-            console.log("response: ", response)
-            console.log("err: ", err)
+            console.log("response body: ", body)
+            console.log("err: ", err.toString())
             console.groupEnd()
             return
         }
