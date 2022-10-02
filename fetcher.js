@@ -1,20 +1,23 @@
 import fetch from 'node-fetch';
-import sqlite from 'aa-sqlite';
 import log from 'log-beautify';
-
-await sqlite.open('./main.db')
-
+import {
+    getActiveKeyword,
+    getProductIds,
+    insertProductStats,
+    insertStats,
+    updateKeywordTotalProducts
+} from "./repo_sqlite.js";
 
 class WBProduct {
-    constructor(product){
+    constructor(product) {
         this.sku = product
         this.imageBase64 = ''
         this.data = ''
     }
 
-    async fetchData(){
+    async fetchData() {
         let url = "https://wbx-content-v2.wbstatic.net/ru/" + this.sku + ".json"
-        try{
+        try {
             let response = await fetch(url)
             let jsonData = await response.json()
             this.data = jsonData
@@ -24,11 +27,11 @@ class WBProduct {
         }
     }
 
-    async fetchImage(){
-        let skuArchive = parseInt(this.sku/10000)
+    async fetchImage() {
+        let skuArchive = parseInt(this.sku / 10000)
         let random = Date.now()
         let imageUrl = `https://images.wbstatic.net/c246x328/new/${skuArchive}0000/${this.sku}-1.jpg?r=${random}`
-        try{
+        try {
             let response = await fetch(imageUrl)
             this.imageBase64 = (await response.buffer()).toString('base64')
         } catch (err) {
@@ -37,7 +40,7 @@ class WBProduct {
         }
     }
 
-    async fetchStocks(){
+    async fetchStocks() {
         let params = {
             'appType': '64',
             'spp': '0',
@@ -66,7 +69,7 @@ class WBProduct {
         }
     }
 
-    async fetchDetails(){
+    async fetchDetails() {
         let params = {
             'pricemarginCoeff': '1',
             'locale': 'ru',
@@ -88,13 +91,13 @@ class WBProduct {
 }
 
 class WBKeyword {
-    constructor(keyword){
+    constructor(keyword) {
         this.keyword = keyword
         this.query = ''
         this.shardKey = ''
     }
 
-    async fetchData(){
+    async fetchData() {
         let url = "https://search.wb.ru/exactmatch/ru/female/v4/search?&resultset=catalog&query=" + encodeURI(this.keyword)
         try {
             let response = await fetch(url)
@@ -109,26 +112,26 @@ class WBKeyword {
 }
 
 class WBSearch {
-    constructor(keyword){
+    constructor(keyword) {
         this.keyword = keyword
         this.positions = []
 
         this.params = {
             'query': this.keyword.keyword,
             'page': 1,
-            'regions': [69,64,86,83,4,38,30,33,70,22,31,66,68,82,48,1,40,80],
+            'regions': [69, 64, 86, 83, 4, 38, 30, 33, 70, 22, 31, 66, 68, 82, 48, 1, 40, 80],
             'appType': 1,
             'locale': 'ru',
-            'dest': [-1059500,-108082,-269701,12358048],
+            'dest': [-1059500, -108082, -269701, 12358048],
             'sort': 'popular',
             'limit': 300,
             'resultset': 'catalog',
         }
     }
 
-    async fetchData(){
+    async fetchData() {
         let queryParams = new URLSearchParams(this.params).toString()
-        let url ='https://search.wb.ru/exactmatch/ru/female/v4/search?' + queryParams
+        let url = 'https://search.wb.ru/exactmatch/ru/female/v4/search?' + queryParams
         try {
             let response = await fetch(url)
             let jsonData = await response.json()
@@ -141,7 +144,7 @@ class WBSearch {
 
             if (jsonData.data.products.length === 300) {
                 this.params.page += 1
-                if(this.params.page <= 100){
+                if (this.params.page <= 100) {
                     await this.fetchData()
                 }
             }
@@ -153,11 +156,9 @@ class WBSearch {
 }
 
 
-( async () => {
-    var keywords = (await sqlite.all("SELECT keyword FROM keywords"))
-                    .map((v,i) => v.keyword)
-    var products = (await sqlite.all("SELECT id FROM products"))
-                    .map((v,i) => v.id)
+(async () => {
+    const keywords = await getActiveKeyword();
+    const products = await getProductIds()
 
     log.success('Ключевые слова')
     log.show(keywords.join(', '), "\n")
@@ -175,7 +176,7 @@ class WBSearch {
     checksCount++
     showInfo(checksCount, startTime, 'Отдыхаю')
 
-    setInterval(async function(){
+    setInterval(async function () {
         showInfo(checksCount, startTime, 'Сканирую')
         await init()
         checksCount++
@@ -183,72 +184,33 @@ class WBSearch {
     }, interval)
 })()
 
-function showInfo(checksCount, startTime, status){
+function showInfo(checksCount, startTime, status) {
     process.stdout.clearLine(0);
     process.stdout.cursorTo(0);
     process.stdout.write(`\x1b[4m\x1b[36mПроверок: ${checksCount}\x1b[0m | Время запуска: ${startTime} | \x1b[32m${status}\x1b[0m`)
 }
 
-async function insertStats(keyword, product, position, total_products){
-    let insert = 'INSERT INTO stats(keyword, product, position, total_products) VALUES(?,?,?,?)'
-    try {
-        await sqlite.push(insert, [...arguments])
-    } catch (err) {
-        console.log(err)
-    }
-}
 
-async function insertProductStats(product, data, imageBase64){
-    let insert = 'INSERT INTO product_stats(product_id, data, image) VALUES(?,?,?)'
-    let response = await sqlite.all(`SELECT * FROM product_stats WHERE product_id = '${product}' ORDER BY timestamp DESC LIMIT 1`)
-    if (response.length == 0){
-        try {
-            await sqlite.push(insert, [...arguments])
-        } catch (err) {
-            console.log(err)
-        }
-    } else {
-        if (response[0].data != data || response[0].image != imageBase64){
-            try {
-                await sqlite.push(insert, [...arguments])
-            } catch (err) {
-                console.log(err)
-            }
-        }
-    }
-}
-
-async function updateKeywordTotalProducts(total_products, _query, keyword){
-    let query = "UPDATE keywords SET total_products = ? , query = ? WHERE keyword = ?"
-    try {
-        await sqlite.push(query, [...arguments])
-    } catch (err) {
-        console.log(err)
-    }
-}
-
-async function init(){
-    var keywords = (await sqlite.all("SELECT keyword FROM keywords"))
-                    .map((v,i) => v.keyword)
-    var products = (await sqlite.all("SELECT id FROM products"))
-                    .map((v,i) => v.id)
+async function init() {
+    const keywords = await getActiveKeyword();
+    const products = await getProductIds();
 
     let timer = 0
-    for(let sku of products){
+    for (let sku of products) {
         timer += 150
-        setTimeout(async function(){
+        setTimeout(async function () {
             let product = new WBProduct(sku)
             await product.fetchData()
             await product.fetchImage()
             await product.fetchStocks()
             await product.fetchDetails()
-            insertProductStats(product.sku, JSON.stringify(product.data), product.imageBase64)
+            await insertProductStats(product.sku, JSON.stringify(product.data), product.imageBase64)
         })
     }
 
-    for(let keyword of keywords){
+    for (let keyword of keywords) {
         timer += 150
-        setTimeout(async function() {
+        setTimeout(async function () {
             let key = new WBKeyword(keyword)
             await key.fetchData()
             let search = new WBSearch(key)
@@ -257,10 +219,11 @@ async function init(){
             let total_products = search.positions.length
             await updateKeywordTotalProducts(total_products, key.query, keyword)
 
-            search.positions.forEach(async function(product, idx){
-                let idxFound = products.indexOf(product.id)
-                if (idxFound != -1){
-                    await insertStats(keyword, products[idxFound], idx+1, total_products)
+            search.positions.forEach(async function (product, idx) {
+                const idxFound = products.indexOf(product.id);
+
+                if (idxFound !== -1) {
+                    await insertStats(keyword, products[idxFound], idx + 1, total_products)
                 }
             })
         }, timer)
