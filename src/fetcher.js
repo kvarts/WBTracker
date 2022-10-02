@@ -129,25 +129,40 @@ class WBSearch {
     async fetchData(){
         let queryParams = new URLSearchParams(this.params).toString()
         let url ='https://search.wb.ru/exactmatch/ru/female/v4/search?' + queryParams
+
+        let response
         try {
-            let response = await fetch(url)
-            let jsonData = await response.json()
-
-            if (jsonData?.data?.products === undefined) {
-                return
-            }
-
-            this.positions.push(...jsonData.data.products)
-
-            if (jsonData.data.products.length === 300) {
-                this.params.page += 1
-                if(this.params.page <= 100){
-                    await this.fetchData()
-                }
-            }
+            response  = await fetch(url)
         } catch (err) {
-            console.log(err)
-            await this.fetchData()
+            console.group("fetchData failed");
+            console.log("url: ", url);
+            console.log("error: ", err);
+            console.groupEnd();
+            return
+        }
+
+        let jsonData
+        try {
+            jsonData = await response.json()
+        } catch (err) {
+            console.group("fetchData failed parse json");
+            console.log("response: ", response)
+            console.log("err: ", err)
+            console.groupEnd()
+            return
+        }
+
+        if (jsonData?.data?.products === undefined) {
+            return
+        }
+
+        this.positions.push(...jsonData.data.products)
+
+        if (jsonData.data.products.length === 300) {
+            this.params.page += 1
+            if(this.params.page <= 100){
+                await this.fetchData()
+            }
         }
     }
 }
